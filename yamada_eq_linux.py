@@ -19,6 +19,8 @@ import subprocess
 import sys
 import atexit
 import signal
+import threading
+import time
 
 # ==========================================
 # EQ PRESET MODELS
@@ -119,8 +121,61 @@ class YamadaEQManager:
         if out.isdigit():
             self.null_sink_module_id = out
 
-        # Set YamadaEQ as default sink so system audio routes through it
-        self.run_cmd('pactl set-default-sink YamadaEQ')
+        # DO NOT set YamadaEQ as default sink. This ensures volume keys control the physical hardware sink!
+        # Instead, we run a background router thread to move app streams to YamadaEQ automatically.
+        self._start_audio_router()
+
+    def _start_audio_router(self):
+        def router():
+            # Initial route
+            self._route_streams()
+            # Subscribe to changes
+            p = subprocess.Popen(["pactl", "subscribe"], stdout=subprocess.PIPE, text=True)
+            for line in iter(p.stdout.readline, ''):
+                if "on sink-input" in line:
+                    self._route_streams()
+
+        self.router_thread = threading.Thread(target=router, daemon=True)
+        self.router_thread.start()
+
+    def _route_streams(self):
+        if not hasattr(self, 'ffmpeg_process') or self.ffmpeg_process is None:
+            return
+            
+        ff_pid = str(self.ffmpeg_process.pid)
+        yamada_sink_id = None
+        
+        try:
+            out = self.run_cmd("pactl list short sinks")
+            for line in out.strip().split('\n'):
+                if "YamadaEQ" in line:
+                    yamada_sink_id = line.split()[0]
+                    break
+                    
+            if not yamada_sink_id:
+                return
+                
+            out = self.run_cmd("pactl list sink-inputs")
+            current_input = None
+            is_ffmpeg = False
+            current_sink = None
+            
+            for line in out.split('\n'):
+                if line.startswith("Sink Input #"):
+                    if current_input and not is_ffmpeg and current_sink != yamada_sink_id:
+                        subprocess.run(f"pactl move-sink-input {current_input} {yamada_sink_id}", shell=True)
+                    current_input = line.split('#')[1]
+                    is_ffmpeg = False
+                    current_sink = None
+                elif "Sink:" in line.strip():
+                    current_sink = line.split(":")[1].strip()
+                elif f'application.process.id = "{ff_pid}"' in line:
+                    is_ffmpeg = True
+                    
+            if current_input and not is_ffmpeg and current_sink != yamada_sink_id:
+                subprocess.run(f"pactl move-sink-input {current_input} {yamada_sink_id}", shell=True)
+        except Exception:
+            pass
 
     def cleanup(self):
         print("Cleaning up audio subsystem...")
