@@ -207,9 +207,11 @@ class YamadaEQManager:
             if preset.get("smartTunnel", False):
                 # Pre-gain
                 filters_list.append("volume=5dB")
-                # Multiband Compressor settings
-                filters_list.append("acompressor=threshold=-20dB:ratio=2.2:attack=5:release=200:makeup=8.5dB")
-                # Post-gain lift (MUST be before limiter to avoid clipping)
+                # Sophisticated Parallel Compression: 
+                # - knee=6: smoother transition into compression
+                # - mix=0.85: blends 15% of the dry signal back in for natural punch (New York style)
+                filters_list.append("acompressor=threshold=-20dB:ratio=2.5:attack=3:release=150:makeup=8.5dB:knee=6:mix=0.85")
+                # Post-gain lift
                 filters_list.append("volume=5dB")
                 # Limiter
                 filters_list.append("alimiter=limit=-0.5dB:attack=0.1:release=50:asc=1")
