@@ -21,6 +21,7 @@ import atexit
 import signal
 import threading
 import time
+import os
 
 # ==========================================
 # EQ PRESET MODELS
@@ -257,7 +258,23 @@ class YamadaEQApp:
         self.root.resizable(False, False)
 
         self.setup_ui()
-        self.eq_manager.apply_preset(PRESETS[0]) # Default OFF
+        
+        self.state_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_preset.txt")
+        saved_preset_name = "OFF"
+        if os.path.exists(self.state_file):
+            try:
+                with open(self.state_file, "r") as f:
+                    saved_preset_name = f.read().strip()
+            except Exception:
+                pass
+                
+        initial_preset = PRESETS[0]
+        for p in PRESETS:
+            if p["name"] == saved_preset_name:
+                initial_preset = p
+                break
+                
+        self.select_preset(initial_preset)
 
     def setup_ui(self):
         # Header
@@ -323,6 +340,13 @@ class YamadaEQApp:
         self.desc_label.configure(text=preset["description"])
         self.eq_manager.apply_preset(preset)
         self.update_selection(preset["name"])
+        
+        if hasattr(self, 'state_file'):
+            try:
+                with open(self.state_file, "w") as f:
+                    f.write(preset["name"])
+            except Exception:
+                pass
 
     def update_selection(self, selected_name):
         for name, frame in self.buttons.items():
