@@ -54,7 +54,7 @@ PRESETS = [
     {
         "name": "JAZZ",
         "displayName": "Jazz",
-        "emoji": "♩",
+        "emoji": "♫",
         "description": "Warm low-mids, airy top end",
         "bands": [300, 200, 100, 0, 200],
         "loudnessGainMb": 400,
