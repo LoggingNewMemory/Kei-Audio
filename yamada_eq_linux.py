@@ -208,13 +208,13 @@ class YamadaEQManager:
                 # Pre-gain
                 filters_list.append("volume=5dB")
                 # Sophisticated Parallel Compression: 
-                # - knee=6: smoother transition into compression
-                # - mix=0.85: blends 15% of the dry signal back in for natural punch (New York style)
-                filters_list.append("acompressor=threshold=-20dB:ratio=2.5:attack=3:release=150:makeup=8.5dB:knee=6:mix=0.85")
-                # Post-gain lift
-                filters_list.append("volume=5dB")
-                # Limiter
-                filters_list.append("alimiter=limit=-0.5dB:attack=0.1:release=50:asc=1")
+                # - release=60: Faster recovery prevents audible volume "holes" after loud bass hits
+                # - mix=0.85: blends 15% of the dry signal back in for natural punch
+                filters_list.append("acompressor=threshold=-20dB:ratio=2.5:attack=2:release=60:makeup=8.5dB:knee=6:mix=0.85")
+                # Post-gain lift (reduced to 2dB to avoid pushing the limiter too hard, which causes ducking)
+                filters_list.append("volume=2dB")
+                # Limiter (Removed asc=1 because Auto Send-Clip acts as an aggressive volume rider that causes noticeable volume drops)
+                filters_list.append("alimiter=limit=-0.5dB:attack=2:release=50")
             # 3. Loudness Enhancer fallback
             elif preset.get("loudnessGainMb", 0) > 0:
                 gain_db = preset["loudnessGainMb"] / 100.0
