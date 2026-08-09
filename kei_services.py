@@ -223,10 +223,19 @@ class KeiAudioManager:
             if not preset.get("smartTunnel", False):
                 filters_list.append("alimiter=limit=-0.5dB:attack=2:release=50")
 
-        # 4. Spatial Audio (Stereo Widener) — independent toggle, works with any preset
+        # 4. Spatial Audio (Clean Cinematic - No phase/robot artifacts)
         if spatial_audio:
-            filters_list.append("crossfeed=strength=0.3")
-            filters_list.append("stereowiden=delay=20:feedback=0.3:crossfeed=0.3:drymix=0.8")
+            # 1. Clean M/S widening (no delays = no robotic comb filtering)
+            filters_list.append("stereotools=mlev=0.9:slev=1.5")
+            # 2. Extra stereo difference expansion for a wider stage
+            filters_list.append("extrastereo=m=1.3")
+            # 3. Lighter crossfeed (cmoy) to keep it cohesive but wider than before
+            filters_list.append("bs2b=profile=cmoy")
+            # 4. Dolby-style dynamic sparkle and clarity
+            filters_list.append("crystalizer=i=2.0")
+            # 5. EQ bump for cinematic low-end rumble and high-end air
+            filters_list.append("equalizer=f=40:width_type=h:width=0.8:g=2")
+            filters_list.append("equalizer=f=12000:width_type=h:width=0.8:g=1")
 
         # Add fade in for smooth transition
         filters_list.append("afade=t=in:d=0.5")
