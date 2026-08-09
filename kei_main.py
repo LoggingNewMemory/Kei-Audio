@@ -17,8 +17,7 @@ from kei_services import KeiAudioManager
 from kei_presets import PRESETS
 
 
-STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_preset.txt")
-SPATIAL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "spatial_state.txt")
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "KeiConfig.txt")
 ICON_PATH  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Design", "Icon.png")
 
 
@@ -34,35 +33,29 @@ class KeiTray:
 
         self._load_saved_preset()
         self.manager.apply_preset(self.current_preset, spatial_audio=self.spatial_audio)
+        self._save_preset()
 
     # ── State persistence ─────────────────────────────────────────────────────
     def _load_saved_preset(self):
-        if os.path.exists(STATE_FILE):
+        if os.path.exists(CONFIG_FILE):
             try:
-                with open(STATE_FILE) as f:
-                    name = f.read().strip()
-                for p in PRESETS:
-                    if p["name"] == name:
-                        self.current_preset = p
-                        return
-            except Exception:
-                pass
-        if os.path.exists(SPATIAL_FILE):
-            try:
-                with open(SPATIAL_FILE) as f:
-                    self.spatial_audio = f.read().strip() == "1"
+                with open(CONFIG_FILE) as f:
+                    for line in f:
+                        if line.startswith("LAST_PRESET="):
+                            name = line.strip().split("=")[1]
+                            for p in PRESETS:
+                                if p["name"] == name:
+                                    self.current_preset = p
+                        elif line.startswith("SPATIAL="):
+                            self.spatial_audio = (line.strip().split("=")[1] == "1")
             except Exception:
                 pass
 
     def _save_preset(self):
         try:
-            with open(STATE_FILE, "w") as f:
-                f.write(self.current_preset["name"])
-        except Exception:
-            pass
-        try:
-            with open(SPATIAL_FILE, "w") as f:
-                f.write("1" if self.spatial_audio else "0")
+            with open(CONFIG_FILE, "w") as f:
+                f.write(f"LAST_PRESET={self.current_preset['name']}\n")
+                f.write(f"SPATIAL={'1' if self.spatial_audio else '0'}\n")
         except Exception:
             pass
 
@@ -191,6 +184,7 @@ def main():
         def gui_select_wrapper(preset, save=True):
             original_select(preset, save=save)
             tray.current_preset = preset
+            tray._save_preset()
             if tray.tray:
                 tray.tray.title = f"ケイ Audio — {tray._get_display_name()}"
                 tray.tray.update_menu()
@@ -201,6 +195,7 @@ def main():
         def gui_toggle_spatial_wrapper(enabled):
             original_toggle_spatial(enabled)
             tray.spatial_audio = enabled
+            tray._save_preset()
             if tray.tray:
                 tray.tray.title = f"ケイ Audio — {tray._get_display_name()}"
                 tray.tray.update_menu()

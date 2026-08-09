@@ -61,19 +61,7 @@ class KeiAudioApp:
         self.avatar_img = self._make_circle_avatar(64)
         self._build_ui()
 
-        # ── Restore last preset ───────────────────────────────────────────────
-        self.state_file = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "last_preset.txt"
-        )
-        saved = "OFF"
-        if os.path.exists(self.state_file):
-            try:
-                with open(self.state_file) as f:
-                    saved = f.read().strip()
-            except Exception:
-                pass
-        initial = next((p for p in PRESETS if p["name"] == saved), PRESETS[0])
-        self.select_preset(initial, save=False)
+        self.select_preset(PRESETS[0], save=False)
 
     # ══════════════════════════════════════════════════════════════════════════
     #  PIL rendering
@@ -328,13 +316,6 @@ class KeiAudioApp:
         self._active_var.set(f"● {self._get_display_name(preset, self.spatial_audio_var.get())}")
         self.eq_manager.apply_preset(preset, spatial_audio=self.spatial_audio_var.get())
         self._refresh_cards(name)
-
-        if save and hasattr(self, "state_file"):
-            try:
-                with open(self.state_file, "w") as f:
-                    f.write(name)
-            except Exception:
-                pass
 
     def _refresh_cards(self, selected):
         for name, refs in self.cards.items():
