@@ -99,6 +99,7 @@ PRESETS = [
 class KeiAudioManager:
     def __init__(self):
         self.ffmpeg_process = None
+        self.ffmpeg_pids = set()
         self.null_sink_module_id = None
         self.original_default_sink = None
         self.setup_audio()
@@ -144,10 +145,6 @@ class KeiAudioManager:
         if getattr(self, 'is_cleaning_up', False):
             return
             
-        if not hasattr(self, 'ffmpeg_process') or self.ffmpeg_process is None:
-            return
-            
-        ff_pid = str(self.ffmpeg_process.pid)
         kei_sink_id = None
         
         try:
@@ -174,8 +171,13 @@ class KeiAudioManager:
                     current_sink = None
                 elif "Sink:" in line.strip():
                     current_sink = line.split(":")[1].strip()
-                elif f'application.process.id = "{ff_pid}"' in line:
-                    is_ffmpeg = True
+                elif "application.process.id = " in line:
+                    try:
+                        pid_str = line.split('"')[1]
+                        if pid_str in self.ffmpeg_pids:
+                            is_ffmpeg = True
+                    except IndexError:
+                        pass
                     
             if current_input and not is_ffmpeg and current_sink != kei_sink_id:
                 subprocess.run(f"pactl move-sink-input {current_input} {kei_sink_id}", shell=True)
@@ -207,11 +209,46 @@ class KeiAudioManager:
         if self.null_sink_module_id:
             self.run_cmd(f'pactl unload-module {self.null_sink_module_id}')
 
+    def _fade_and_kill(self, proc):
+        if not proc:
+            return
+        def task():
+            try:
+                out = self.run_cmd("pactl list sink-inputs")
+                sink_input = None
+                current_input = None
+                for line in out.split('\n'):
+                    if line.startswith("Sink Input #"):
+                        current_input = line.split('#')[1]
+                    elif f'application.process.id = "{proc.pid}"' in line:
+                        sink_input = current_input
+                        break
+                
+                if sink_input:
+                    # Fade out over ~500ms
+                    for i in range(20, -1, -1):
+                        vol = int((i / 20.0) * 100)
+                        subprocess.run(f"pactl set-sink-input-volume {sink_input} {vol}%", shell=True, stderr=subprocess.DEVNULL)
+                        time.sleep(0.025)
+            except Exception:
+                pass
+            finally:
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=1)
+                except Exception:
+                    proc.kill()
+                # Clean up pid from set
+                pid_str = str(proc.pid)
+                if pid_str in self.ffmpeg_pids:
+                    self.ffmpeg_pids.remove(pid_str)
+
+        threading.Thread(target=task, daemon=True).start()
+
     def apply_preset(self, preset):
-        if self.ffmpeg_process:
-            self.ffmpeg_process.terminate()
-            self.ffmpeg_process.wait()
-            
+        old_process = self.ffmpeg_process
+        self.ffmpeg_process = None
+        
         filters_list = []
 
         if preset["name"] != "OFF":
@@ -244,9 +281,12 @@ class KeiAudioManager:
             if not preset.get("smartTunnel", False):
                 filters_list.append("alimiter=limit=-0.5dB:attack=2:release=50")
 
+        # Add fade in for smooth transition
+        filters_list.append("afade=t=in:d=0.5")
+
         # Fallback filter to prevent empty graph
         if not filters_list:
-            filter_str = "anull"
+            filter_str = "afade=t=in:d=0.5"
         else:
             filter_str = ",".join(filters_list)
 
@@ -260,6 +300,12 @@ class KeiAudioManager:
         ]
         
         self.ffmpeg_process = subprocess.Popen(cmd)
+        self.ffmpeg_pids.add(str(self.ffmpeg_process.pid))
+        
+        # Now safely fade out and kill the old process
+        if old_process:
+            self._fade_and_kill(old_process)
+            
         print(f"Applied Preset: {preset['displayName']}")
 
 # ==========================================
