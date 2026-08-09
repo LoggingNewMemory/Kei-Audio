@@ -72,13 +72,20 @@ class KeiTray:
             self.select_preset(preset)
         return action
 
+    def _get_display_name(self, preset=None, spatial_audio=None):
+        p = preset or self.current_preset
+        s = spatial_audio if spatial_audio is not None else self.spatial_audio
+        if p["name"] == "OFF" and s:
+            return "Spatial"
+        return p["displayName"]
+
     def select_preset(self, preset):
         """Public method — can be called by tray menu or GUI."""
         self.current_preset = preset
         self.manager.apply_preset(preset, spatial_audio=self.spatial_audio)
         self._save_preset()
         if self.tray:
-            self.tray.title = f"ケイ Audio — {preset['displayName']}"
+            self.tray.title = f"ケイ Audio — {self._get_display_name()}"
             self.tray.update_menu()
         if self._on_preset_changed:
             self._on_preset_changed(preset, self.spatial_audio)
@@ -137,7 +144,7 @@ class KeiTray:
         self.tray = pystray.Icon(
             name="kei-audio",
             icon=icon_image,
-            title=f"ケイ Audio — {self.current_preset['displayName']}",
+            title=f"ケイ Audio — {self._get_display_name()}",
             menu=self._build_menu()
         )
         self.tray.run()
@@ -185,7 +192,7 @@ def main():
             original_select(preset, save=save)
             tray.current_preset = preset
             if tray.tray:
-                tray.tray.title = f"ケイ Audio — {preset['displayName']}"
+                tray.tray.title = f"ケイ Audio — {tray._get_display_name()}"
                 tray.tray.update_menu()
         gui.select_preset = gui_select_wrapper
         
@@ -195,6 +202,7 @@ def main():
             original_toggle_spatial(enabled)
             tray.spatial_audio = enabled
             if tray.tray:
+                tray.tray.title = f"ケイ Audio — {tray._get_display_name()}"
                 tray.tray.update_menu()
         gui.toggle_spatial_audio = gui_toggle_spatial_wrapper
 

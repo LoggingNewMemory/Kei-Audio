@@ -303,10 +303,18 @@ class KeiAudioApp:
     #  Selection
     # ══════════════════════════════════════════════════════════════════════════
 
+    def _get_display_name(self, preset=None, spatial_audio=None):
+        p = preset or next(pr for pr in PRESETS if pr["name"] == self.current_preset.get())
+        s = spatial_audio if spatial_audio is not None else self.spatial_audio_var.get()
+        if p["name"] == "OFF" and s:
+            return "Spatial"
+        return p["displayName"]
+
     def toggle_spatial_audio(self, enabled):
         self.spatial_audio_var.set(enabled)
         preset = next(p for p in PRESETS if p["name"] == self.current_preset.get())
         self.eq_manager.apply_preset(preset, spatial_audio=enabled)
+        self._active_var.set(f"● {self._get_display_name(preset, enabled)}")
         self._refresh_cards(preset["name"])
 
     def sync_state(self, preset, spatial_audio):
@@ -317,7 +325,7 @@ class KeiAudioApp:
         name = preset["name"]
         self.current_preset.set(name)
         self._desc_var.set(f"  {preset['description']}")
-        self._active_var.set(f"● {preset['displayName']}")
+        self._active_var.set(f"● {self._get_display_name(preset, self.spatial_audio_var.get())}")
         self.eq_manager.apply_preset(preset, spatial_audio=self.spatial_audio_var.get())
         self._refresh_cards(name)
 
