@@ -223,6 +223,13 @@ class KeiAudioManager:
             if not preset.get("smartTunnel", False):
                 filters_list.append("alimiter=limit=-0.5dB:attack=2:release=50")
 
+        # 4. Spatial Audio (Stereo Widener)
+        if preset.get("spatialAudio", False):
+            # crossfeed for natural headphone imaging
+            filters_list.append("crossfeed=strength=0.3")
+            # subtle stereo widening
+            filters_list.append("stereowiden=delay=20:feedback=0.3:crossfeed=0.3:drymix=0.8")
+
         # Add fade in for smooth transition
         filters_list.append("afade=t=in:d=0.5")
         filter_str = ",".join(filters_list)

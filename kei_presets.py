@@ -6,7 +6,8 @@ PRESETS = [
         "description": "Bypass all EQ",
         "bands": [0, 0, 0, 0, 0],
         "loudnessGainMb": 0,
-        "smartTunnel": False
+        "smartTunnel": False,
+        "spatialAudio": False
     },
     {
         "name": "SMART",
@@ -15,7 +16,8 @@ PRESETS = [
         "description": "Dynamic audio tunnel — punchy, clear, and loud without distortion",
         "bands": [150, -100, 50, 200, 100],
         "loudnessGainMb": 600,
-        "smartTunnel": True
+        "smartTunnel": True,
+        "spatialAudio": True
     },
     {
         "name": "ROCK",
@@ -24,7 +26,8 @@ PRESETS = [
         "description": "Punchy bass, scooped mids, crisp highs",
         "bands": [500, 300, -200, 200, 400],
         "loudnessGainMb": 500,
-        "smartTunnel": False
+        "smartTunnel": False,
+        "spatialAudio": False
     },
     {
         "name": "JAZZ",
@@ -33,7 +36,8 @@ PRESETS = [
         "description": "Warm low-mids, airy top end",
         "bands": [300, 200, 100, 0, 200],
         "loudnessGainMb": 400,
-        "smartTunnel": False
+        "smartTunnel": False,
+        "spatialAudio": False
     },
     {
         "name": "CLASSIC",
@@ -42,7 +46,8 @@ PRESETS = [
         "description": "Flat response, natural dynamics",
         "bands": [0, 0, 0, 0, 0],
         "loudnessGainMb": 300,
-        "smartTunnel": False
+        "smartTunnel": False,
+        "spatialAudio": False
     },
     {
         "name": "POP",
@@ -51,7 +56,8 @@ PRESETS = [
         "description": "Boosted vocals & presence, tight bass",
         "bands": [-100, 200, 300, 200, 100],
         "loudnessGainMb": 400,
-        "smartTunnel": False
+        "smartTunnel": False,
+        "spatialAudio": False
     },
     {
         "name": "BASS",
@@ -60,6 +66,17 @@ PRESETS = [
         "description": "Heavy sub & bass boost for earphones",
         "bands": [800, 600, 0, -100, -100],
         "loudnessGainMb": 600,
-        "smartTunnel": False
+        "smartTunnel": False,
+        "spatialAudio": False
+    },
+    {
+        "name": "SPATIAL",
+        "displayName": "Spatial",
+        "emoji": "🎧",
+        "description": "Stereo widening for immersive headphone listening",
+        "bands": [100, 0, 50, 150, 200],
+        "loudnessGainMb": 300,
+        "smartTunnel": False,
+        "spatialAudio": True
     }
 ]
