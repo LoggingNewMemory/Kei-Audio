@@ -194,20 +194,9 @@ class KeiAudioManager:
 
             # 2. Smart Audio Tunnel (DynamicsProcessing)
             if preset.get("smartTunnel", False):
-                # Pre-gain: gentle drive into compressor (was 5dB — way too hot)
                 filters_list.append("volume=3dB")
-                # Parallel Compression with musical settings:
-                # - threshold=-24dB: catches less material, lets quiet parts breathe
-                # - ratio=2:1: gentle squeeze instead of heavy pumping
-                # - attack=8: slower attack preserves transients and punch
-                # - release=80: smooth recovery avoids audible breathing
-                # - makeup=5dB: modest loudness lift (was 8.5dB — caused limiter abuse)
-                # - knee=10: very soft knee for transparent compression
-                # - mix=0.6: 40% dry signal preserved — keeps dynamics alive
                 filters_list.append("acompressor=threshold=-24dB:ratio=2:attack=8:release=80:makeup=5dB:knee=8:mix=0.6")
-                # High-shelf exciter: adds presence and air above 8kHz
                 filters_list.append("equalizer=f=8000:width_type=h:width=1:g=2")
-                # Limiter: transparent ceiling with relaxed timing
                 filters_list.append("alimiter=limit=-0.3dB:attack=3:release=60")
             # 3. Loudness Enhancer fallback
             elif preset.get("loudnessGainMb", 0) > 0:
