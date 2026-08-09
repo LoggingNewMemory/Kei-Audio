@@ -19,20 +19,36 @@ class KeiAudioManager:
 
     def setup_audio(self):
         print("Initializing audio subsystem...")
+        
+        # Cleanup any leftover KeiAudio instances from previous crashes
+        try:
+            out = self.run_cmd("pactl list short modules")
+            for line in out.split('\n'):
+                if "module-null-sink" in line and "KeiAudio" in line:
+                    mod_id = line.split()[0]
+                    self.run_cmd(f"pactl unload-module {mod_id}")
+        except Exception:
+            pass
+
+        # Save current defaults to prevent them from being hijacked
+        original_default_source = self.run_cmd("pactl get-default-source")
         self.original_default_sink = self.run_cmd("pactl get-default-sink")
         
-        # Avoid nesting null sinks
+        # Avoid nesting null sinks just in case
         if "KeiAudio" in self.original_default_sink:
-            print("KeiAudio is already the default sink. Please reset your audio manually first.")
-            sys.exit(1)
+            self.original_default_sink = ""
 
         # Load the virtual sink
         out = self.run_cmd('pactl load-module module-null-sink sink_name=KeiAudio sink_properties=device.description="KeiAudio"')
         if out.isdigit():
             self.null_sink_module_id = out
 
-        # DO NOT set KeiAudio as default sink. This ensures volume keys control the physical hardware sink!
-        # Instead, we run a background router thread to move app streams to KeiAudio automatically.
+        # Restore defaults immediately so the OS doesn't switch your Mic or System Audio to KeiAudio
+        if self.original_default_sink:
+            self.run_cmd(f"pactl set-default-sink {self.original_default_sink}")
+        if original_default_source:
+            self.run_cmd(f"pactl set-default-source {original_default_source}")
+
         self._start_audio_router()
 
     def _start_audio_router(self):
