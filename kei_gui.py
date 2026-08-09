@@ -36,6 +36,7 @@ class KeiAudioApp:
         self.root = root
         self.eq_manager = eq_manager
         self.current_preset = tk.StringVar(value="OFF")
+        self.spatial_audio_var = tk.BooleanVar(value=False)
         self.cards = {}
         self._img_refs = []           # prevent garbage-collection
 
@@ -277,16 +278,22 @@ class KeiAudioApp:
         }
 
         # ── Hover / Click ─────────────────────────────────────────────────────
-        def on_enter(e, n=preset["name"]):
-            if self.current_preset.get() != n:
+        is_toggle = preset.get("isToggle", False)
+        def on_enter(e, n=preset["name"], t=is_toggle):
+            active = self.spatial_audio_var.get() if t else (self.current_preset.get() == n)
+            if not active:
                 c.itemconfigure(img_id, image=self._card_imgs["hover"])
 
-        def on_leave(e, n=preset["name"]):
-            if self.current_preset.get() != n:
+        def on_leave(e, n=preset["name"], t=is_toggle):
+            active = self.spatial_audio_var.get() if t else (self.current_preset.get() == n)
+            if not active:
                 c.itemconfigure(img_id, image=self._card_imgs["normal"])
 
-        def on_click(e, p=preset):
-            self.select_preset(p)
+        def on_click(e, p=preset, t=is_toggle):
+            if t:
+                self.toggle_spatial_audio(not self.spatial_audio_var.get())
+            else:
+                self.select_preset(p)
 
         c.bind("<Enter>", on_enter)
         c.bind("<Leave>", on_leave)
@@ -296,12 +303,22 @@ class KeiAudioApp:
     #  Selection
     # ══════════════════════════════════════════════════════════════════════════
 
+    def toggle_spatial_audio(self, enabled):
+        self.spatial_audio_var.set(enabled)
+        preset = next(p for p in PRESETS if p["name"] == self.current_preset.get())
+        self.eq_manager.apply_preset(preset, spatial_audio=enabled)
+        self._refresh_cards(preset["name"])
+
+    def sync_state(self, preset, spatial_audio):
+        self.spatial_audio_var.set(spatial_audio)
+        self.select_preset(preset, save=False)
+
     def select_preset(self, preset, save=True):
         name = preset["name"]
         self.current_preset.set(name)
         self._desc_var.set(f"  {preset['description']}")
         self._active_var.set(f"● {preset['displayName']}")
-        self.eq_manager.apply_preset(preset)
+        self.eq_manager.apply_preset(preset, spatial_audio=self.spatial_audio_var.get())
         self._refresh_cards(name)
 
         if save and hasattr(self, "state_file"):
@@ -314,7 +331,14 @@ class KeiAudioApp:
     def _refresh_cards(self, selected):
         for name, refs in self.cards.items():
             c = refs["canvas"]
-            is_sel = (name == selected)
+            
+            p = next((pr for pr in PRESETS if pr["name"] == name), None)
+            is_toggle = p.get("isToggle", False) if p else False
+            
+            if is_toggle:
+                is_sel = self.spatial_audio_var.get()
+            else:
+                is_sel = (name == selected)
 
             c.itemconfigure(refs["img"],
                             image=self._card_imgs["selected" if is_sel else "normal"])

@@ -193,7 +193,7 @@ class KeiAudioManager:
 
         threading.Thread(target=task, daemon=True).start()
 
-    def apply_preset(self, preset):
+    def apply_preset(self, preset, spatial_audio=False):
         old_process = self.ffmpeg_process
         self.ffmpeg_process = None
         
@@ -223,11 +223,9 @@ class KeiAudioManager:
             if not preset.get("smartTunnel", False):
                 filters_list.append("alimiter=limit=-0.5dB:attack=2:release=50")
 
-        # 4. Spatial Audio (Stereo Widener)
-        if preset.get("spatialAudio", False):
-            # crossfeed for natural headphone imaging
+        # 4. Spatial Audio (Stereo Widener) — independent toggle, works with any preset
+        if spatial_audio:
             filters_list.append("crossfeed=strength=0.3")
-            # subtle stereo widening
             filters_list.append("stereowiden=delay=20:feedback=0.3:crossfeed=0.3:drymix=0.8")
 
         # Add fade in for smooth transition
