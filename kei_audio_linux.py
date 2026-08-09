@@ -22,6 +22,7 @@ import signal
 import threading
 import time
 import os
+from PIL import Image, ImageTk, ImageDraw
 
 # ==========================================
 # EQ PRESET MODELS
@@ -140,6 +141,9 @@ class KeiAudioManager:
         self.router_thread.start()
 
     def _route_streams(self):
+        if getattr(self, 'is_cleaning_up', False):
+            return
+            
         if not hasattr(self, 'ffmpeg_process') or self.ffmpeg_process is None:
             return
             
@@ -179,7 +183,22 @@ class KeiAudioManager:
             pass
 
     def cleanup(self):
+        if getattr(self, 'is_cleaning_up', False):
+            return
+        self.is_cleaning_up = True
         print("Cleaning up audio subsystem...")
+        
+        # Restore all active audio streams to the original hardware sink before shutting down
+        if self.original_default_sink:
+            try:
+                out = self.run_cmd("pactl list short sink-inputs")
+                for line in out.strip().split('\n'):
+                    if line:
+                        input_id = line.split()[0]
+                        subprocess.run(f"pactl move-sink-input {input_id} {self.original_default_sink}", shell=True, stderr=subprocess.DEVNULL)
+            except Exception:
+                pass
+
         if self.ffmpeg_process:
             self.ffmpeg_process.terminate()
             self.ffmpeg_process.wait()
@@ -252,11 +271,19 @@ class KeiAudioApp:
         self.eq_manager = eq_manager
         self.current_preset = tk.StringVar(value="OFF")
         
-        self.root.title("Kei Audio")
-        self.root.geometry("450x450")
-        self.root.configure(bg="#1A1010")
+        self.root.title("ケイ Audio")
+        self.root.geometry("750x450")
+        self.bg_color = "#3b4252"
+        self.tile_color = "#d8d8eb"
+        self.tile_sel_color = "#ffffff"
+        self.text_color = "#ffffff"
+        self.tile_text_color = "#3b4252"
+        self.root.configure(bg=self.bg_color)
         self.root.resizable(False, False)
-
+        
+        # Ensure icon exists
+        self.icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Design", "Key IMG", "Kei_Icon.png")
+        self.avatar_img = None
         self.setup_ui()
         
         self.state_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_preset.txt")
@@ -276,50 +303,94 @@ class KeiAudioApp:
                 
         self.select_preset(initial_preset)
 
-    def setup_ui(self):
-        # Header
-        title = tk.Label(self.root, text="Kei Audio", fg="#B8355B", bg="#1A1010", 
-                         font=("Helvetica", 20, "bold"))
-        title.pack(pady=(20, 0))
+    def create_circle_icon(self, size=80):
+        try:
+            img = Image.open(self.icon_path).convert("RGBA")
+            # Crop to square first
+            min_dim = min(img.width, img.height)
+            left = (img.width - min_dim) / 2
+            top = (img.height - min_dim) / 2
+            right = (img.width + min_dim) / 2
+            bottom = (img.height + min_dim) / 2
+            img = img.crop((left, top, right, bottom))
+            img = img.resize((size, size), Image.Resampling.LANCZOS)
+            
+            # Create a circular mask
+            mask = Image.new("L", (size, size), 0)
+            draw = ImageDraw.Draw(mask)
+            draw.ellipse((0, 0, size, size), fill=255)
+            
+            # Apply mask
+            circular_img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+            circular_img.paste(img, (0, 0), mask)
+            
+            return ImageTk.PhotoImage(circular_img)
+        except Exception as e:
+            print(f"Could not load icon: {e}")
+            return None
 
-        self.desc_label = tk.Label(self.root, text=PRESETS[0]["description"], fg="#888888", bg="#1A1010",
+    def setup_ui(self):
+        # Header Frame
+        header_frame = tk.Frame(self.root, bg=self.bg_color)
+        header_frame.pack(fill=tk.X, padx=30, pady=(20, 10))
+        
+        # Avatar
+        self.avatar_img = self.create_circle_icon(size=70)
+        if self.avatar_img:
+            avatar_lbl = tk.Label(header_frame, image=self.avatar_img, bg=self.bg_color)
+            avatar_lbl.pack(side=tk.LEFT, padx=(0, 15))
+            
+        # Title Texts
+        title_text_frame = tk.Frame(header_frame, bg=self.bg_color)
+        title_text_frame.pack(side=tk.LEFT, fill=tk.Y, pady=5)
+        
+        title_lbl = tk.Label(title_text_frame, text="ケイ Audio", fg=self.text_color, bg=self.bg_color, 
+                             font=("Helvetica", 24, "bold"))
+        title_lbl.pack(anchor="w")
+        
+        author_lbl = tk.Label(title_text_frame, text="By: 神奈川 山田", fg="#d8dee9", bg=self.bg_color, 
+                              font=("Helvetica", 12))
+        author_lbl.pack(anchor="w")
+        
+        # Mid Section
+        mid_frame = tk.Frame(self.root, bg=self.bg_color)
+        mid_frame.pack(fill=tk.X, pady=(5, 5))
+        
+        presets_lbl = tk.Label(mid_frame, text="Audio Presets", fg=self.text_color, bg=self.bg_color,
+                               font=("Helvetica", 18))
+        presets_lbl.pack()
+
+        self.desc_label = tk.Label(self.root, text=PRESETS[0]["description"], fg="#e5e9f0", bg=self.bg_color,
                                    font=("Helvetica", 11))
-        self.desc_label.pack(pady=(0, 20))
+        self.desc_label.pack(pady=(5, 10))
 
         # Grid container
-        grid_frame = tk.Frame(self.root, bg="#1A1010")
-        grid_frame.pack(padx=20, fill=tk.BOTH, expand=True)
+        grid_frame = tk.Frame(self.root, bg=self.bg_color)
+        grid_frame.pack(padx=30, fill=tk.BOTH, expand=True)
 
         self.buttons = {}
         
-        # First row (OFF)
-        off_preset = PRESETS[0]
-        btn = self.create_tile(grid_frame, off_preset)
-        btn.grid(row=0, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
-        self.buttons[off_preset["name"]] = btn
-
-        # Other presets (3 per row)
-        other_presets = PRESETS[1:]
-        for i, preset in enumerate(other_presets):
-            row = 1 + (i // 3)
-            col = i % 3
+        for i, preset in enumerate(PRESETS):
+            # Layout 4 items in first row, 3 in second
+            row = i // 4
+            col = i % 4
             btn = self.create_tile(grid_frame, preset)
-            btn.grid(row=row, column=col, sticky="nsew", padx=5, pady=5)
+            btn.grid(row=row, column=col, sticky="nsew", padx=10, pady=10)
             grid_frame.grid_columnconfigure(col, weight=1)
             self.buttons[preset["name"]] = btn
             
         self.update_selection("OFF")
 
     def create_tile(self, parent, preset):
-        frame = tk.Frame(parent, bg="#251818", highlightbackground="#3A2020", highlightthickness=1, cursor="hand2")
+        frame = tk.Frame(parent, bg=self.tile_color, cursor="hand2")
         frame.pack_propagate(False)
-        frame.configure(height=90)
+        frame.configure(height=110)
         
-        lbl_emoji = tk.Label(frame, text=preset["emoji"], fg="white", bg="#251818", font=("Helvetica", 24))
-        lbl_emoji.pack(pady=(10, 0))
+        lbl_emoji = tk.Label(frame, text=preset["emoji"], fg=self.tile_text_color, bg=self.tile_color, font=("Helvetica", 28))
+        lbl_emoji.pack(pady=(15, 0))
         
-        lbl_name = tk.Label(frame, text=preset["displayName"], fg="white", bg="#251818", font=("Helvetica", 10))
-        lbl_name.pack()
+        lbl_name = tk.Label(frame, text=preset["displayName"], fg=self.tile_text_color, bg=self.tile_color, font=("Helvetica", 11, "bold"))
+        lbl_name.pack(pady=(5, 0))
 
         # Bind click events
         def on_click(e, p=preset):
@@ -351,13 +422,13 @@ class KeiAudioApp:
     def update_selection(self, selected_name):
         for name, frame in self.buttons.items():
             if name == selected_name:
-                frame.configure(bg="#B8355B", highlightbackground="#D4577A")
-                frame.lbl_emoji.configure(bg="#B8355B")
-                frame.lbl_name.configure(bg="#B8355B", font=("Helvetica", 10, "bold"))
+                frame.configure(bg=self.tile_sel_color, highlightbackground="#4F86F7", highlightthickness=2)
+                frame.lbl_emoji.configure(bg=self.tile_sel_color)
+                frame.lbl_name.configure(bg=self.tile_sel_color)
             else:
-                frame.configure(bg="#251818", highlightbackground="#3A2020")
-                frame.lbl_emoji.configure(bg="#251818")
-                frame.lbl_name.configure(bg="#251818", font=("Helvetica", 10, "normal"))
+                frame.configure(bg=self.tile_color, highlightbackground=self.tile_color, highlightthickness=2)
+                frame.lbl_emoji.configure(bg=self.tile_color)
+                frame.lbl_name.configure(bg=self.tile_color)
 
 if __name__ == "__main__":
     manager = KeiAudioManager()
