@@ -194,16 +194,21 @@ class KeiAudioManager:
 
             # 2. Smart Audio Tunnel (DynamicsProcessing)
             if preset.get("smartTunnel", False):
-                # Pre-gain
-                filters_list.append("volume=5dB")
-                # Sophisticated Parallel Compression: 
-                # - release=60: Faster recovery prevents audible volume "holes" after loud bass hits
-                # - mix=0.85: blends 15% of the dry signal back in for natural punch
-                filters_list.append("acompressor=threshold=-20dB:ratio=2.5:attack=2:release=60:makeup=8.5dB:knee=6:mix=0.85")
-                # Post-gain lift (reduced to 2dB to avoid pushing the limiter too hard, which causes ducking)
-                filters_list.append("volume=2dB")
-                # Limiter (Removed asc=1 because Auto Send-Clip acts as an aggressive volume rider that causes noticeable volume drops)
-                filters_list.append("alimiter=limit=-0.5dB:attack=2:release=50")
+                # Pre-gain: gentle drive into compressor (was 5dB — way too hot)
+                filters_list.append("volume=3dB")
+                # Parallel Compression with musical settings:
+                # - threshold=-24dB: catches less material, lets quiet parts breathe
+                # - ratio=2:1: gentle squeeze instead of heavy pumping
+                # - attack=8: slower attack preserves transients and punch
+                # - release=80: smooth recovery avoids audible breathing
+                # - makeup=5dB: modest loudness lift (was 8.5dB — caused limiter abuse)
+                # - knee=10: very soft knee for transparent compression
+                # - mix=0.6: 40% dry signal preserved — keeps dynamics alive
+                filters_list.append("acompressor=threshold=-24dB:ratio=2:attack=8:release=80:makeup=5dB:knee=8:mix=0.6")
+                # High-shelf exciter: adds presence and air above 8kHz
+                filters_list.append("equalizer=f=8000:width_type=h:width=1:g=2")
+                # Limiter: transparent ceiling with relaxed timing
+                filters_list.append("alimiter=limit=-0.3dB:attack=3:release=60")
             # 3. Loudness Enhancer fallback
             elif preset.get("loudnessGainMb", 0) > 0:
                 gain_db = preset["loudnessGainMb"] / 100.0

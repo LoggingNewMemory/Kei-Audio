@@ -12,8 +12,8 @@ PRESETS = [
         "name": "SMART",
         "displayName": "Smart",
         "emoji": "◈",
-        "description": "Dynamic audio tunnel — boosts volume on beat drops and lifts",
-        "bands": [200, 100, 0, 100, 150],
+        "description": "Dynamic audio tunnel — punchy, clear, and loud without distortion",
+        "bands": [150, -100, 50, 200, 100],
         "loudnessGainMb": 600,
         "smartTunnel": True
     },
