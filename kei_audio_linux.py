@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Yamada EQ - Linux Native Port
+Kei Audio - Linux Native Port
 Copyright (C) 2026 Kanagawa Yamada (Ported to Python/Linux)
 
 This script implements a system-wide equalizer for Linux using PulseAudio/PipeWire
@@ -95,7 +95,7 @@ PRESETS = [
 # ==========================================
 # AUDIO BACKEND MANAGER
 # ==========================================
-class YamadaEQManager:
+class KeiAudioManager:
     def __init__(self):
         self.ffmpeg_process = None
         self.null_sink_module_id = None
@@ -113,17 +113,17 @@ class YamadaEQManager:
         self.original_default_sink = self.run_cmd("pactl get-default-sink")
         
         # Avoid nesting null sinks
-        if "YamadaEQ" in self.original_default_sink:
-            print("YamadaEQ is already the default sink. Please reset your audio manually first.")
+        if "KeiAudio" in self.original_default_sink:
+            print("KeiAudio is already the default sink. Please reset your audio manually first.")
             sys.exit(1)
 
         # Load the virtual sink
-        out = self.run_cmd('pactl load-module module-null-sink sink_name=YamadaEQ sink_properties=device.description="YamadaEQ"')
+        out = self.run_cmd('pactl load-module module-null-sink sink_name=KeiAudio sink_properties=device.description="KeiAudio"')
         if out.isdigit():
             self.null_sink_module_id = out
 
-        # DO NOT set YamadaEQ as default sink. This ensures volume keys control the physical hardware sink!
-        # Instead, we run a background router thread to move app streams to YamadaEQ automatically.
+        # DO NOT set KeiAudio as default sink. This ensures volume keys control the physical hardware sink!
+        # Instead, we run a background router thread to move app streams to KeiAudio automatically.
         self._start_audio_router()
 
     def _start_audio_router(self):
@@ -144,16 +144,16 @@ class YamadaEQManager:
             return
             
         ff_pid = str(self.ffmpeg_process.pid)
-        yamada_sink_id = None
+        kei_sink_id = None
         
         try:
             out = self.run_cmd("pactl list short sinks")
             for line in out.strip().split('\n'):
-                if "YamadaEQ" in line:
-                    yamada_sink_id = line.split()[0]
+                if "KeiAudio" in line:
+                    kei_sink_id = line.split()[0]
                     break
                     
-            if not yamada_sink_id:
+            if not kei_sink_id:
                 return
                 
             out = self.run_cmd("pactl list sink-inputs")
@@ -163,8 +163,8 @@ class YamadaEQManager:
             
             for line in out.split('\n'):
                 if line.startswith("Sink Input #"):
-                    if current_input and not is_ffmpeg and current_sink != yamada_sink_id:
-                        subprocess.run(f"pactl move-sink-input {current_input} {yamada_sink_id}", shell=True)
+                    if current_input and not is_ffmpeg and current_sink != kei_sink_id:
+                        subprocess.run(f"pactl move-sink-input {current_input} {kei_sink_id}", shell=True)
                     current_input = line.split('#')[1]
                     is_ffmpeg = False
                     current_sink = None
@@ -173,8 +173,8 @@ class YamadaEQManager:
                 elif f'application.process.id = "{ff_pid}"' in line:
                     is_ffmpeg = True
                     
-            if current_input and not is_ffmpeg and current_sink != yamada_sink_id:
-                subprocess.run(f"pactl move-sink-input {current_input} {yamada_sink_id}", shell=True)
+            if current_input and not is_ffmpeg and current_sink != kei_sink_id:
+                subprocess.run(f"pactl move-sink-input {current_input} {kei_sink_id}", shell=True)
         except Exception:
             pass
 
@@ -231,11 +231,11 @@ class YamadaEQManager:
         else:
             filter_str = ",".join(filters_list)
 
-        # Spawn ffmpeg to process audio from YamadaEQ sink and push it to original sink
+        # Spawn ffmpeg to process audio from KeiAudio sink and push it to original sink
         cmd = [
             "ffmpeg", "-nostats", "-loglevel", "error", "-y",
             "-fflags", "nobuffer", "-flags", "low_delay",
-            "-f", "pulse", "-i", "YamadaEQ.monitor",
+            "-f", "pulse", "-i", "KeiAudio.monitor",
             "-af", filter_str,
             "-f", "pulse", "-device", self.original_default_sink, "pulse"
         ]
@@ -246,13 +246,13 @@ class YamadaEQManager:
 # ==========================================
 # GUI
 # ==========================================
-class YamadaEQApp:
+class KeiAudioApp:
     def __init__(self, root, eq_manager):
         self.root = root
         self.eq_manager = eq_manager
         self.current_preset = tk.StringVar(value="OFF")
         
-        self.root.title("Yamada EQ")
+        self.root.title("Kei Audio")
         self.root.geometry("450x450")
         self.root.configure(bg="#1A1010")
         self.root.resizable(False, False)
@@ -278,7 +278,7 @@ class YamadaEQApp:
 
     def setup_ui(self):
         # Header
-        title = tk.Label(self.root, text="Yamada EQ", fg="#B8355B", bg="#1A1010", 
+        title = tk.Label(self.root, text="Kei Audio", fg="#B8355B", bg="#1A1010", 
                          font=("Helvetica", 20, "bold"))
         title.pack(pady=(20, 0))
 
@@ -360,7 +360,7 @@ class YamadaEQApp:
                 frame.lbl_name.configure(bg="#251818", font=("Helvetica", 10, "normal"))
 
 if __name__ == "__main__":
-    manager = YamadaEQManager()
+    manager = KeiAudioManager()
     
     def handle_exit(*args):
         manager.cleanup()
@@ -371,7 +371,7 @@ if __name__ == "__main__":
     atexit.register(manager.cleanup)
 
     root = tk.Tk()
-    app = YamadaEQApp(root, manager)
+    app = KeiAudioApp(root, manager)
     
     # Handle window close button
     root.protocol("WM_DELETE_WINDOW", lambda: handle_exit())
