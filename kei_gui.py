@@ -1,26 +1,34 @@
 import tkinter as tk
 import os
-from PIL import Image, ImageTk, ImageDraw
+from PIL import Image, ImageTk, ImageDraw, ImageFilter
 from kei_presets import PRESETS
 
-# ── Color Palette (dark navy + lavender cards + pink accent from icon) ────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def _hex_rgb(h):
+    return tuple(int(h[i:i + 2], 16) for i in (1, 3, 5))
+
+# ── Palette ───────────────────────────────────────────────────────────────────
 BG          = "#2e3440"
-HEADER_BG   = "#262b36"
-CARD_FILL   = "#c5c5e0"
-CARD_HOVER  = "#d6d6ee"
+HEADER_BG   = "#252a35"
+CARD_FILL   = "#c8c8e2"
+CARD_HOVER  = "#d8d8ee"
 CARD_SEL    = "#ffffff"
-ACCENT      = "#e06090"   # pink-magenta from the icon
-ACCENT_DIM  = "#c05080"
+ACCENT      = "#e06090"
 TEXT_WHITE  = "#eceff4"
 TEXT_DIM    = "#7b839c"
 TEXT_DARK   = "#2e3440"
+BAR_NORMAL  = "#8585b0"
+BAR_ACCENT  = "#e06090"
 
-# ── Card geometry ─────────────────────────────────────────────────────────────
-CARD_W  = 152
-CARD_H  = 112
-CARD_R  = 16
-COLS    = 4
-FONT    = "Helvetica"
+# ── Card dimensions ──────────────────────────────────────────────────────────
+CARD_W     = 160
+CARD_H     = 126
+CARD_R     = 16
+SHADOW_PAD = 12          # extra space around card for shadow / glow
+IMG_W      = CARD_W + SHADOW_PAD * 2
+IMG_H      = CARD_H + SHADOW_PAD * 2
+COLS       = 4
+FONT       = "Helvetica"
 
 
 class KeiAudioApp:
@@ -29,10 +37,10 @@ class KeiAudioApp:
         self.eq_manager = eq_manager
         self.current_preset = tk.StringVar(value="OFF")
         self.cards = {}
-        self._img_refs = []  # prevent garbage collection
+        self._img_refs = []           # prevent garbage-collection
 
         root.title("ケイ Audio")
-        root.geometry("780x500")
+        root.geometry("840x540")
         root.configure(bg=BG)
         root.resizable(False, False)
 
@@ -40,16 +48,19 @@ class KeiAudioApp:
             os.path.dirname(os.path.abspath(__file__)), "Design", "Icon.png"
         )
 
-        # Pre-render card background images (PIL anti-aliased rounded rects)
-        self._card_normal = self._render_rounded_rect(CARD_W, CARD_H, CARD_R, CARD_FILL)
-        self._card_hover  = self._render_rounded_rect(CARD_W, CARD_H, CARD_R, CARD_HOVER)
-        self._card_sel    = self._render_rounded_rect(CARD_W, CARD_H, CARD_R, CARD_SEL, ACCENT, 3)
+        # Pre-render card images (rounded rects + drop shadows via PIL)
+        self._card_imgs = {
+            "normal":   self._render_card_image(CARD_FILL),
+            "hover":    self._render_card_image(CARD_HOVER),
+            "selected": self._render_card_image(CARD_SEL, outline=ACCENT, ow=3,
+                                                 glow_color=ACCENT),
+        }
 
         self._set_window_icon()
         self.avatar_img = self._make_circle_avatar(64)
         self._build_ui()
 
-        # ── Restore last saved preset ─────────────────────────────────────────
+        # ── Restore last preset ───────────────────────────────────────────────
         self.state_file = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "last_preset.txt"
         )
@@ -64,36 +75,67 @@ class KeiAudioApp:
         self.select_preset(initial, save=False)
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  Image helpers
+    #  PIL rendering
     # ══════════════════════════════════════════════════════════════════════════
 
-    @staticmethod
-    def _hex_rgb(h):
-        return tuple(int(h[i:i + 2], 16) for i in (1, 3, 5))
+    def _render_card_image(self, fill, outline=None, ow=0, glow_color=None):
+        """Anti-aliased rounded rectangle with soft drop shadow (or glow)."""
+        w, h, r, pad = CARD_W, CARD_H, CARD_R, SHADOW_PAD
+        tw, th = IMG_W, IMG_H
+        S = 2                                     # supersample factor
 
-    def _render_rounded_rect(self, w, h, r, fill, outline=None, ow=0):
-        """PIL-rendered rounded rectangle at 2× for anti-aliased edges."""
-        s = 2  # supersampling factor
-        img = Image.new("RGBA", (w * s, h * s), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(img)
-        fc = self._hex_rgb(fill)
+        canvas = Image.new("RGBA", (tw * S, th * S), (0, 0, 0, 0))
+
+        # ── Shadow / Glow layer ───────────────────────────────────────────────
+        shadow = Image.new("RGBA", (tw * S, th * S), (0, 0, 0, 0))
+        sd = ImageDraw.Draw(shadow)
+
+        if glow_color:
+            gc = _hex_rgb(glow_color)
+            sd.rounded_rectangle(
+                (pad * S, pad * S, (pad + w) * S - 1, (pad + h) * S - 1),
+                radius=r * S, fill=(*gc, 45)
+            )
+            shadow = shadow.filter(ImageFilter.GaussianBlur(radius=10 * S))
+        else:
+            ox, oy = (pad + 2) * S, (pad + 4) * S     # shadow offset
+            sd.rounded_rectangle(
+                (ox, oy, ox + w * S - 1, oy + h * S - 1),
+                radius=r * S, fill=(0, 0, 0, 50)
+            )
+            shadow = shadow.filter(ImageFilter.GaussianBlur(radius=6 * S))
+
+        canvas = Image.alpha_composite(canvas, shadow)
+
+        # ── Card body ─────────────────────────────────────────────────────────
+        draw = ImageDraw.Draw(canvas)
+        cx, cy = pad * S, pad * S
+        fc = _hex_rgb(fill)
 
         if outline and ow:
-            oc = self._hex_rgb(outline)
-            draw.rounded_rectangle((0, 0, w * s - 1, h * s - 1),
-                                   radius=r * s, fill=oc)
-            inset = ow * s
-            draw.rounded_rectangle((inset, inset,
-                                    w * s - 1 - inset, h * s - 1 - inset),
-                                   radius=max(1, (r - ow) * s), fill=fc)
+            oc = _hex_rgb(outline)
+            draw.rounded_rectangle(
+                (cx, cy, cx + w * S - 1, cy + h * S - 1),
+                radius=r * S, fill=oc
+            )
+            ins = ow * S
+            draw.rounded_rectangle(
+                (cx + ins, cy + ins,
+                 cx + w * S - 1 - ins, cy + h * S - 1 - ins),
+                radius=max(1, (r - ow) * S), fill=fc
+            )
         else:
-            draw.rounded_rectangle((0, 0, w * s - 1, h * s - 1),
-                                   radius=r * s, fill=fc)
+            draw.rounded_rectangle(
+                (cx, cy, cx + w * S - 1, cy + h * S - 1),
+                radius=r * S, fill=fc
+            )
 
-        img = img.resize((w, h), Image.Resampling.LANCZOS)
-        photo = ImageTk.PhotoImage(img)
+        canvas = canvas.resize((tw, th), Image.Resampling.LANCZOS)
+        photo = ImageTk.PhotoImage(canvas)
         self._img_refs.append(photo)
         return photo
+
+    # ── Icon helpers ──────────────────────────────────────────────────────────
 
     def _set_window_icon(self):
         try:
@@ -111,17 +153,15 @@ class KeiAudioApp:
                             (img.width + s) // 2, (img.height + s) // 2))
             img = img.resize((size, size), Image.Resampling.LANCZOS)
 
-            # circular mask
             mask = Image.new("L", (size, size), 0)
             ImageDraw.Draw(mask).ellipse((0, 0, size - 1, size - 1), fill=255)
 
-            # subtle pink ring (2 passes for soft glow)
             ring = Image.new("RGBA", (size, size), (0, 0, 0, 0))
             rd = ImageDraw.Draw(ring)
             rd.ellipse((0, 0, size - 1, size - 1),
                        outline=(224, 96, 144, 200), width=2)
             rd.ellipse((1, 1, size - 2, size - 2),
-                       outline=(224, 96, 144, 90), width=1)
+                       outline=(224, 96, 144, 80), width=1)
 
             result = Image.new("RGBA", (size, size), (0, 0, 0, 0))
             result.paste(img, mask=mask)
@@ -139,7 +179,7 @@ class KeiAudioApp:
     # ══════════════════════════════════════════════════════════════════════════
 
     def _build_ui(self):
-        # ── Header bar ────────────────────────────────────────────────────────
+        # ── Header ────────────────────────────────────────────────────────────
         header = tk.Frame(self.root, bg=HEADER_BG)
         header.pack(fill=tk.X, ipady=14)
 
@@ -147,8 +187,8 @@ class KeiAudioApp:
         hpad.pack(fill=tk.BOTH, expand=True, padx=28)
 
         if self.avatar_img:
-            tk.Label(hpad, image=self.avatar_img, bg=HEADER_BG).pack(
-                side=tk.LEFT, padx=(0, 14))
+            tk.Label(hpad, image=self.avatar_img, bg=HEADER_BG) \
+                .pack(side=tk.LEFT, padx=(0, 14))
 
         tf = tk.Frame(hpad, bg=HEADER_BG)
         tf.pack(side=tk.LEFT)
@@ -160,9 +200,9 @@ class KeiAudioApp:
         # ── Accent separator ─────────────────────────────────────────────────
         tk.Frame(self.root, bg=ACCENT, height=2).pack(fill=tk.X)
 
-        # ── Section label row ─────────────────────────────────────────────────
+        # ── Section header ────────────────────────────────────────────────────
         sec = tk.Frame(self.root, bg=BG)
-        sec.pack(fill=tk.X, padx=30, pady=(20, 4))
+        sec.pack(fill=tk.X, padx=32, pady=(20, 2))
 
         tk.Label(sec, text="Audio Presets", fg=TEXT_DIM, bg=BG,
                  font=(FONT, 11)).pack(side=tk.LEFT)
@@ -171,9 +211,9 @@ class KeiAudioApp:
         tk.Label(sec, textvariable=self._active_var, fg=ACCENT, bg=BG,
                  font=(FONT, 10, "bold")).pack(side=tk.RIGHT)
 
-        # ── Preset card grid ─────────────────────────────────────────────────
+        # ── Card grid ─────────────────────────────────────────────────────────
         grid = tk.Frame(self.root, bg=BG)
-        grid.pack(fill=tk.BOTH, expand=True, padx=24, pady=(6, 0))
+        grid.pack(fill=tk.BOTH, expand=True, padx=18, pady=(2, 0))
 
         for i, preset in enumerate(PRESETS):
             row, col = divmod(i, COLS)
@@ -182,47 +222,68 @@ class KeiAudioApp:
         grid.grid_rowconfigure(0, weight=1)
         grid.grid_rowconfigure(1, weight=1)
 
-        # ── Bottom status bar ─────────────────────────────────────────────────
+        # ── Status bar ────────────────────────────────────────────────────────
         status = tk.Frame(self.root, bg=HEADER_BG, height=38)
         status.pack(fill=tk.X, side=tk.BOTTOM)
         status.pack_propagate(False)
 
         self._desc_var = tk.StringVar(value="")
         tk.Label(status, textvariable=self._desc_var, fg=TEXT_DIM, bg=HEADER_BG,
-                 font=(FONT, 10), anchor="w", padx=30).pack(
-            fill=tk.BOTH, expand=True)
+                 font=(FONT, 10), anchor="w", padx=30) \
+            .pack(fill=tk.BOTH, expand=True)
 
     # ── Card factory ──────────────────────────────────────────────────────────
 
     def _make_card(self, parent, preset, row, col):
-        c = tk.Canvas(parent, width=CARD_W, height=CARD_H,
+        c = tk.Canvas(parent, width=IMG_W, height=IMG_H,
                       bg=BG, highlightthickness=0, cursor="hand2")
-        c.grid(row=row, column=col, padx=10, pady=8)
+        c.grid(row=row, column=col, padx=4, pady=2)
 
-        # background image (rounded rect)
-        img_id = c.create_image(CARD_W // 2, CARD_H // 2,
-                                image=self._card_normal)
-        # emoji
-        emoji_id = c.create_text(CARD_W // 2, CARD_H // 2 - 14,
+        # rounded-rect background (PIL image with baked-in shadow)
+        img_id = c.create_image(IMG_W // 2, IMG_H // 2,
+                                image=self._card_imgs["normal"])
+
+        # text origin (center of the card body)
+        cx = SHADOW_PAD + CARD_W // 2
+
+        emoji_id = c.create_text(cx, SHADOW_PAD + 38,
                                  text=preset["emoji"],
-                                 font=(FONT, 24), fill=TEXT_DARK)
-        # label
-        name_id = c.create_text(CARD_W // 2, CARD_H // 2 + 22,
+                                 font=(FONT, 26), fill=TEXT_DARK)
+
+        name_id = c.create_text(cx, SHADOW_PAD + 70,
                                 text=preset["displayName"],
                                 font=(FONT, 10, "bold"), fill=TEXT_DARK)
 
+        # ── EQ bars (5-band visualisation at bottom of card) ──────────────────
+        bands = preset.get("bands", [0, 0, 0, 0, 0])
+        bar_ids = []
+        bar_w, gap = 8, 6
+        total_bw = 5 * bar_w + 4 * gap
+        start_x = SHADOW_PAD + (CARD_W - total_bw) // 2
+        bar_base = SHADOW_PAD + CARD_H - 16
+
+        for j, gain in enumerate(bands):
+            norm = max(0.1, min(1.0, (gain + 300) / 1100))
+            bar_h = int(3 + norm * 20)
+            bx = start_x + j * (bar_w + gap)
+            by = bar_base - bar_h
+            bid = c.create_rectangle(bx, by, bx + bar_w, bar_base,
+                                     fill=BAR_NORMAL, outline="")
+            bar_ids.append(bid)
+
         self.cards[preset["name"]] = {
-            "canvas": c, "img": img_id, "emoji": emoji_id, "name": name_id
+            "canvas": c, "img": img_id, "emoji": emoji_id,
+            "name": name_id, "bars": bar_ids,
         }
 
-        # hover / click
+        # ── Hover / Click ─────────────────────────────────────────────────────
         def on_enter(e, n=preset["name"]):
             if self.current_preset.get() != n:
-                c.itemconfigure(img_id, image=self._card_hover)
+                c.itemconfigure(img_id, image=self._card_imgs["hover"])
 
         def on_leave(e, n=preset["name"]):
             if self.current_preset.get() != n:
-                c.itemconfigure(img_id, image=self._card_normal)
+                c.itemconfigure(img_id, image=self._card_imgs["normal"])
 
         def on_click(e, p=preset):
             self.select_preset(p)
@@ -232,7 +293,7 @@ class KeiAudioApp:
         c.bind("<Button-1>", on_click)
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  Selection logic
+    #  Selection
     # ══════════════════════════════════════════════════════════════════════════
 
     def select_preset(self, preset, save=True):
@@ -253,14 +314,16 @@ class KeiAudioApp:
     def _refresh_cards(self, selected):
         for name, refs in self.cards.items():
             c = refs["canvas"]
-            if name == selected:
-                c.itemconfigure(refs["img"], image=self._card_sel)
-                c.itemconfigure(refs["emoji"], fill=ACCENT)
-                c.itemconfigure(refs["name"], fill=TEXT_DARK)
-            else:
-                c.itemconfigure(refs["img"], image=self._card_normal)
-                c.itemconfigure(refs["emoji"], fill=TEXT_DARK)
-                c.itemconfigure(refs["name"], fill=TEXT_DARK)
+            is_sel = (name == selected)
+
+            c.itemconfigure(refs["img"],
+                            image=self._card_imgs["selected" if is_sel else "normal"])
+            c.itemconfigure(refs["emoji"],
+                            fill=ACCENT if is_sel else TEXT_DARK)
+
+            bar_color = BAR_ACCENT if is_sel else BAR_NORMAL
+            for bid in refs["bars"]:
+                c.itemconfigure(bid, fill=bar_color)
 
 
 if __name__ == "__main__":
