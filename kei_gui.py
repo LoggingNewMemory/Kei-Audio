@@ -20,7 +20,7 @@ class KeiAudioApp:
         self.root.resizable(False, False)
         
         # Ensure icon exists
-        self.icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Design", "Key IMG", "Kei_Icon.png")
+        self.icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Design", "Icon.png")
         self.avatar_img = None
         self.setup_ui()
         
@@ -72,11 +72,17 @@ class KeiAudioApp:
         header_frame = tk.Frame(self.root, bg=self.bg_color)
         header_frame.pack(fill=tk.X, padx=30, pady=(20, 10))
         
-        # Avatar
+        # Avatar and Window Icon
         self.avatar_img = self.create_circle_icon(size=70)
         if self.avatar_img:
             avatar_lbl = tk.Label(header_frame, image=self.avatar_img, bg=self.bg_color)
             avatar_lbl.pack(side=tk.LEFT, padx=(0, 15))
+            try:
+                # Set the window taskbar icon
+                icon_img = tk.PhotoImage(file=self.icon_path)
+                self.root.iconphoto(True, icon_img)
+            except Exception:
+                pass
             
         # Title Texts
         title_text_frame = tk.Frame(header_frame, bg=self.bg_color)
