@@ -60,9 +60,45 @@ class KeiAudioManager:
             for line in iter(p.stdout.readline, ''):
                 if "on sink-input" in line:
                     self._route_streams()
+                elif "on server" in line or "on sink" in line:
+                    self._check_hardware_sink()
 
         self.router_thread = threading.Thread(target=router, daemon=True)
         self.router_thread.start()
+
+    def _check_hardware_sink(self):
+        try:
+            current_def = self.run_cmd("pactl get-default-sink")
+            if not current_def or "KeiAudio" in current_def:
+                return
+
+            if current_def != getattr(self, "original_default_sink", ""):
+                print(f"Hardware sink changed to: {current_def}")
+                self.original_default_sink = current_def
+                
+                # Find ffmpeg's sink-input and seamlessly move it to the new hardware sink
+                if not self.ffmpeg_pids:
+                    return
+                    
+                out = self.run_cmd("pactl list sink-inputs")
+                current_input = None
+                ffmpeg_input_id = None
+                
+                for line in out.split('\n'):
+                    if line.startswith("Sink Input #"):
+                        current_input = line.split('#')[1]
+                    elif "application.process.id = " in line:
+                        try:
+                            pid_str = line.split('"')[1]
+                            if pid_str in self.ffmpeg_pids:
+                                ffmpeg_input_id = current_input
+                        except IndexError:
+                            pass
+                            
+                if ffmpeg_input_id:
+                    subprocess.run(f"pactl move-sink-input {ffmpeg_input_id} {self.original_default_sink}", shell=True, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
 
     def _route_streams(self):
         if getattr(self, 'is_cleaning_up', False):
