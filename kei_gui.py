@@ -45,9 +45,13 @@ class KeiAudioApp:
         root.configure(bg=BG)
         root.resizable(False, False)
 
-        self.icon_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "Design", "Icon.png"
-        )
+        import sys
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            base_path = sys._MEIPASS
+        else:
+            base_path = os.path.dirname(os.path.abspath(__file__))
+            
+        self.icon_path = os.path.join(base_path, "Design", "Icon.png")
 
         # Pre-render card images (rounded rects + drop shadows via PIL)
         self._card_imgs = {

@@ -1,4 +1,32 @@
+# Configuration
 last_preset.txt
-Design/Exported/*
-__pycache__/
 KeiConfig.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Build outputs & Environments
+build/
+dist/
+build_env/
+venv/
+env/
+.venv/
+.env/
+
+# PyInstaller
+*.spec
+
+# Archives & Packages
+*.tar.gz
+*.zip
+*.tar.bz2
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Design Exports
+Design/Exported/*

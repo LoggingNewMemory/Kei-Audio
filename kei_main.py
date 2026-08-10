@@ -18,8 +18,16 @@ from kei_services import KeiAudioManager
 from kei_presets import PRESETS
 
 
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "KeiConfig.txt")
-ICON_PATH  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Design", "Icon.png")
+def get_base_path():
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        return sys._MEIPASS
+    return os.path.dirname(os.path.abspath(__file__))
+
+BASE_PATH = get_base_path()
+CONFIG_DIR = os.path.expanduser("~/.config/kei-audio")
+os.makedirs(CONFIG_DIR, exist_ok=True)
+CONFIG_FILE = os.path.join(CONFIG_DIR, "KeiConfig.txt")
+ICON_PATH  = os.path.join(BASE_PATH, "Design", "Icon.png")
 AUTOSTART_FILE = os.path.expanduser("~/.config/autostart/kei-audio.desktop")
 
 def is_autostart_enabled():
@@ -28,11 +36,15 @@ def is_autostart_enabled():
 def set_autostart(enabled):
     if enabled:
         os.makedirs(os.path.dirname(AUTOSTART_FILE), exist_ok=True)
+        if getattr(sys, 'frozen', False):
+            exec_cmd = f"{sys.executable} --tray"
+        else:
+            exec_cmd = f"{sys.executable} {os.path.abspath(__file__)} --tray"
         desktop_entry = f"""[Desktop Entry]
 Type=Application
 Name=ケイ Audio
 Comment=System-wide audio equalizer and enhancer
-Exec={sys.executable} {os.path.abspath(__file__)} --tray
+Exec={exec_cmd}
 Icon={ICON_PATH}
 Terminal=false
 Categories=Audio;AudioVideo;
@@ -158,7 +170,7 @@ class KeiTray:
         self.tray = pystray.Icon(
             name="kei-audio",
             icon=icon_image,
-            title=f"ケイ Audio — {self._get_display_name()}",
+            title=f"Kei Audio - {self._get_display_name()}",
             menu=self._build_menu()
         )
         self.tray.run()
