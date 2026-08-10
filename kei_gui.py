@@ -186,6 +186,37 @@ class KeiAudioApp:
         tk.Label(tf, text="By: 神奈川 山田", fg=TEXT_DIM, bg=HEADER_BG,
                  font=(FONT, 10)).pack(anchor="w")
 
+        import kei_main
+        
+        self.autostart_enabled = kei_main.is_autostart_enabled()
+        self.btn_autostart = tk.Label(hpad, text="", bg=HEADER_BG, fg=TEXT_WHITE,
+                                      font=(FONT, 10, "bold"), cursor="hand2", padx=12, pady=6)
+        
+        def update_autostart_btn():
+            if self.autostart_enabled:
+                self.btn_autostart.config(text="Autostart: ON", fg=ACCENT)
+            else:
+                self.btn_autostart.config(text="Autostart: OFF", fg=TEXT_DIM)
+                
+        def on_autostart_click(e):
+            self.autostart_enabled = not self.autostart_enabled
+            kei_main.set_autostart(self.autostart_enabled)
+            update_autostart_btn()
+            
+        def on_autostart_enter(e):
+            self.autostart_enabled = kei_main.is_autostart_enabled()
+            update_autostart_btn()
+            self.btn_autostart.config(bg=BG)
+            
+        def on_autostart_leave(e):
+            self.btn_autostart.config(bg=HEADER_BG)
+            
+        self.btn_autostart.bind("<Button-1>", on_autostart_click)
+        self.btn_autostart.bind("<Enter>", on_autostart_enter)
+        self.btn_autostart.bind("<Leave>", on_autostart_leave)
+        update_autostart_btn()
+        self.btn_autostart.pack(side=tk.RIGHT, padx=10)
+
         # ── Accent separator ─────────────────────────────────────────────────
         tk.Frame(self.root, bg=ACCENT, height=2).pack(fill=tk.X)
 

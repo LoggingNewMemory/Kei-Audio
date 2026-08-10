@@ -9,6 +9,7 @@ import sys
 import os
 import atexit
 import threading
+import socket
 
 import pystray
 from PIL import Image
@@ -19,17 +20,44 @@ from kei_presets import PRESETS
 
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "KeiConfig.txt")
 ICON_PATH  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Design", "Icon.png")
+AUTOSTART_FILE = os.path.expanduser("~/.config/autostart/kei-audio.desktop")
+
+def is_autostart_enabled():
+    return os.path.exists(AUTOSTART_FILE)
+
+def set_autostart(enabled):
+    if enabled:
+        os.makedirs(os.path.dirname(AUTOSTART_FILE), exist_ok=True)
+        desktop_entry = f"""[Desktop Entry]
+Type=Application
+Name=ケイ Audio
+Comment=System-wide audio equalizer and enhancer
+Exec={sys.executable} {os.path.abspath(__file__)} --tray
+Icon={ICON_PATH}
+Terminal=false
+Categories=Audio;AudioVideo;
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
+"""
+        with open(AUTOSTART_FILE, "w") as f:
+            f.write(desktop_entry)
+    else:
+        if os.path.exists(AUTOSTART_FILE):
+            os.remove(AUTOSTART_FILE)
+
 
 
 class KeiTray:
     """System tray backend — always runs regardless of mode."""
 
-    def __init__(self, manager, on_preset_changed=None):
+    def __init__(self, manager, on_preset_changed=None, on_show_window=None, on_quit=None):
         self.manager = manager
         self.current_preset = PRESETS[0]
         self.spatial_audio = False
         self.tray = None
         self._on_preset_changed = on_preset_changed  # callback for GUI sync
+        self._on_show_window = on_show_window
+        self._on_quit = on_quit
 
         self._load_saved_preset()
         self.manager.apply_preset(self.current_preset, spatial_audio=self.spatial_audio)
@@ -85,6 +113,9 @@ class KeiTray:
 
     def _toggle_spatial(self, icon, item):
         self.set_spatial_audio(not self.spatial_audio)
+
+    def _toggle_autostart(self, icon, item):
+        set_autostart(not is_autostart_enabled())
         
     def set_spatial_audio(self, enabled):
         """Public method — can be called by tray menu or GUI."""
@@ -102,34 +133,24 @@ class KeiTray:
         return check
 
     # ── Quit ──────────────────────────────────────────────────────────────────
+    # ── Actions ───────────────────────────────────────────────────────────────
+    def _show_window_action(self, icon, item):
+        if self._on_show_window:
+            self._on_show_window()
+
     def quit(self, icon=None, item=None):
         self.manager.cleanup()
         if self.tray:
             self.tray.stop()
+        if self._on_quit:
+            self._on_quit()
 
     # ── Build menu ────────────────────────────────────────────────────────────
     def _build_menu(self):
-        items = []
-        for p in PRESETS:
-            items.append(
-                pystray.MenuItem(
-                    f"{p['emoji']}  {p['displayName']}",
-                    self._select_preset(p),
-                    checked=self._is_selected(p),
-                    radio=True
-                )
-            )
-        items.append(pystray.Menu.SEPARATOR)
-        items.append(
-            pystray.MenuItem(
-                "🎧  Spatial Audio",
-                self._toggle_spatial,
-                checked=lambda item: self.spatial_audio
-            )
+        return pystray.Menu(
+            pystray.MenuItem("Show Window", self._show_window_action),
+            pystray.MenuItem("Quit", self.quit)
         )
-        items.append(pystray.Menu.SEPARATOR)
-        items.append(pystray.MenuItem("Quit", self.quit))
-        return pystray.Menu(*items)
 
     # ── Run (blocks on current thread) ────────────────────────────────────────
     def run(self):
@@ -148,67 +169,103 @@ class KeiTray:
 
 
 def main():
+    SOCKET_PATH = "/tmp/kei-audio.sock"
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.connect(SOCKET_PATH)
+        s.send(b"SHOW")
+        s.close()
+        print("An instance is already running. Requesting it to show the window.")
+        sys.exit(0)
+    except Exception:
+        pass
+
+    if os.path.exists(SOCKET_PATH):
+        os.remove(SOCKET_PATH)
+
     tray_only = "--tray" in sys.argv
 
     manager = KeiAudioManager()
 
-    def handle_signal(*args):
+    import tkinter as tk
+    from kei_gui import KeiAudioApp
+
+    root = tk.Tk()
+    if tray_only:
+        root.withdraw()
+
+    def socket_listener():
+        server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        server.bind(SOCKET_PATH)
+        server.listen(1)
+        while True:
+            try:
+                conn, _ = server.accept()
+                data = conn.recv(1024)
+                if data == b"SHOW":
+                    root.after(0, lambda: (root.deiconify(), root.lift(), root.focus_force()))
+                conn.close()
+            except Exception:
+                break
+
+    listener_thread = threading.Thread(target=socket_listener, daemon=True)
+    listener_thread.start()
+
+    def cleanup():
         manager.cleanup()
+        if os.path.exists(SOCKET_PATH):
+            try:
+                os.remove(SOCKET_PATH)
+            except:
+                pass
+
+    def handle_signal(*args):
+        cleanup()
         sys.exit(0)
 
     signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
-    atexit.register(manager.cleanup)
+    atexit.register(cleanup)
 
-    if tray_only:
-        # ── Tray-only mode (autostart) ────────────────────────────────────────
-        app = KeiTray(manager)
-        print(f"ケイ Audio running in system tray (Preset: {app.current_preset['displayName']})")
-        app.run()
-    else:
-        # ── GUI + Tray mode (manual launch) ───────────────────────────────────
-        import tkinter as tk
-        from kei_gui import KeiAudioApp
+    gui = KeiAudioApp(root, manager)
 
-        root = tk.Tk()
-        gui = KeiAudioApp(root, manager)
-
-        # Wire tray ↔ GUI: tray preset changes update the GUI
-        def on_tray_state_changed(preset, spatial_audio):
-            root.after(0, lambda: gui.sync_state(preset, spatial_audio))
-
-        tray = KeiTray(manager, on_preset_changed=on_tray_state_changed)
-
-        # Wire GUI → tray: GUI preset changes update the tray
-        original_select = gui.select_preset
-        def gui_select_wrapper(preset, save=True):
-            original_select(preset, save=save)
-            tray.current_preset = preset
-            tray._save_preset()
-            if tray.tray:
-                tray.tray.title = f"ケイ Audio — {tray._get_display_name()}"
-                tray.tray.update_menu()
-        gui.select_preset = gui_select_wrapper
+    def on_tray_state_changed(preset, spatial_audio):
+        root.after(0, lambda: gui.sync_state(preset, spatial_audio))
         
-        # Wire GUI → tray: GUI spatial audio toggle updates the tray
-        original_toggle_spatial = gui.toggle_spatial_audio
-        def gui_toggle_spatial_wrapper(enabled):
-            original_toggle_spatial(enabled)
-            tray.spatial_audio = enabled
-            tray._save_preset()
-            if tray.tray:
-                tray.tray.title = f"ケイ Audio — {tray._get_display_name()}"
-                tray.tray.update_menu()
-        gui.toggle_spatial_audio = gui_toggle_spatial_wrapper
+    def on_show_window():
+        root.after(0, lambda: (root.deiconify(), root.lift(), root.focus_force()))
+        
+    def on_quit():
+        root.after(0, root.quit)
 
-        # Restore saved preset into GUI
-        gui.sync_state(tray.current_preset, tray.spatial_audio)
+    tray = KeiTray(manager, on_preset_changed=on_tray_state_changed, 
+                   on_show_window=on_show_window, on_quit=on_quit)
 
-        tray.run_detached()
+    original_select = gui.select_preset
+    def gui_select_wrapper(preset, save=True):
+        original_select(preset, save=save)
+        tray.current_preset = preset
+        tray._save_preset()
+        if tray.tray:
+            tray.tray.title = f"ケイ Audio — {tray._get_display_name()}"
+            tray.tray.update_menu()
+    gui.select_preset = gui_select_wrapper
+    
+    original_toggle_spatial = gui.toggle_spatial_audio
+    def gui_toggle_spatial_wrapper(enabled):
+        original_toggle_spatial(enabled)
+        tray.spatial_audio = enabled
+        tray._save_preset()
+        if tray.tray:
+            tray.tray.title = f"ケイ Audio — {tray._get_display_name()}"
+            tray.tray.update_menu()
+    gui.toggle_spatial_audio = gui_toggle_spatial_wrapper
 
-        root.protocol("WM_DELETE_WINDOW", lambda: (tray.quit(), sys.exit(0)))
-        root.mainloop()
+    gui.sync_state(tray.current_preset, tray.spatial_audio)
+    tray.run_detached()
 
+    root.protocol("WM_DELETE_WINDOW", lambda: root.withdraw())
+    root.mainloop()
 
 if __name__ == "__main__":
     main()
