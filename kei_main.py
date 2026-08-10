@@ -50,6 +50,7 @@ Terminal=false
 Categories=Audio;AudioVideo;
 StartupNotify=false
 X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=5
 """
         with open(AUTOSTART_FILE, "w") as f:
             f.write(desktop_entry)
